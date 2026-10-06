@@ -2,33 +2,74 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+:root {
+  --cs-bg: #F4F5F9;
+  --cs-surface: #FFFFFF;
+  --cs-surface-raised: #F0F2F8;
+  --cs-border: #E3E6EF;
+  --cs-text-primary: #151826;
+  --cs-text-secondary: #5A607A;
+  --cs-text-muted: #8A90A8;
+  --cs-accent: #5B54E8;
+  --cs-accent-hover: #4D46D6;
+  --cs-accent-soft: #ECEBFE;
+  --cs-online: #22A06B;
+  --cs-offline: #A3A9BD;
+  --cs-danger: #D6455D;
+  --cs-warning: #C98A1B;
+  --cs-read-tick: #38BDF8;
+}
+
+.dark {
+  --cs-bg: #0E1018;
+  --cs-surface: #151826;
+  --cs-surface-raised: #1C2033;
+  --cs-border: #262B42;
+  --cs-text-primary: #ECEEF8;
+  --cs-text-secondary: #A0A6C0;
+  --cs-text-muted: #6F7592;
+  --cs-accent: #7B75F5;
+  --cs-accent-hover: #8F8AF8;
+  --cs-accent-soft: #24224A;
+  --cs-online: #34C38A;
+  --cs-offline: #5C6280;
+  --cs-danger: #F0647A;
+  --cs-warning: #E3A83A;
+  --cs-read-tick: #9BE7FF;
+}
+
+@theme {
+  --font-heading: 'Manrope', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --color-cs-bg: var(--cs-bg);
+  --color-cs-surface: var(--cs-surface);
+  --color-cs-surface-raised: var(--cs-surface-raised);
+  --color-cs-border: var(--cs-border);
+  --color-cs-primary: var(--cs-text-primary);
+  --color-cs-secondary: var(--cs-text-secondary);
+  --color-cs-muted: var(--cs-text-muted);
+  --color-cs-accent: var(--cs-accent);
+  --color-cs-accent-hover: var(--cs-accent-hover);
+  --color-cs-accent-soft: var(--cs-accent-soft);
+  --color-cs-online: var(--cs-online);
+  --color-cs-offline: var(--cs-offline);
+  --color-cs-danger: var(--cs-danger);
+  --color-cs-warning: var(--cs-warning);
+  --color-cs-read: var(--cs-read-tick);
+}
+
 @layer base {
-  :root {
-    --bg-main: #f8fafc;
-    --bg-surface: #ffffff;
-    --bg-surface-hover: #f1f5f9;
-    --border-main: #e2e8f0;
-    --text-main: #0f172a;
-    --text-muted: #64748b;
-    --accent: #2563eb;
-  }
-
-  .dark {
-    --bg-main: #090d16;
-    --bg-surface: #0f172a;
-    --bg-surface-hover: #1e293b;
-    --border-main: #1e293b;
-    --text-main: #f8fafc;
-    --text-muted: #94a3b8;
-    --accent: #3b82f6;
-  }
-
   body {
-    background-color: var(--bg-main);
-    color: var(--text-main);
-    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    background-color: var(--cs-bg);
+    color: var(--cs-text-primary);
+    font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading);
+    letter-spacing: -0.015em;
   }
 }
 
@@ -41,15 +82,24 @@
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.35);
+  background: rgba(138, 144, 168, 0.35);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(100, 116, 139, 0.6);
+  background: rgba(90, 96, 122, 0.6);
 }
 .dark ::-webkit-scrollbar-thumb {
-  background: rgba(51, 65, 85, 0.6);
+  background: rgba(111, 117, 146, 0.4);
 }
 .dark ::-webkit-scrollbar-thumb:hover {
-  background: rgba(71, 85, 105, 0.8);
+  background: rgba(160, 166, 192, 0.6);
+}
+
+/* Focus outline helpers */
+.focus-ring {
+  outline: none;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.focus-ring:focus-visible {
+  box-shadow: 0 0 0 2px var(--cs-bg), 0 0 0 4px var(--cs-accent);
 }

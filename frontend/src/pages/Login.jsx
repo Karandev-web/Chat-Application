@@ -2,11 +2,16 @@ import React, { useState, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { Link, useNavigate } from 'react-router-dom';
-import { MessageSquare, Loader2, Lock, User, Sun, Moon } from 'lucide-react';
+import Button from '../components/ui/Button';
+import { 
+  MessageSquare, Lock, User, Sun, Moon, Eye, EyeOff, 
+  Sparkles, CheckCircle2, ShieldCheck, Zap
+} from 'lucide-react';
 
-const Login = () => {
+export const Login = () => {
   const [identifier, setIdentifier] = useState(''); // email or username
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const { login } = useContext(AuthContext);
   const { theme, toggleTheme } = useTheme();
   const [error, setError] = useState('');
@@ -29,95 +34,150 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 py-12 px-4 sm:px-6 lg:px-8 relative transition-colors duration-200">
+    <div className="min-h-screen w-full flex bg-cs-bg text-cs-text-primary transition-colors duration-200">
       {/* Theme Toggle Button */}
       <button
         onClick={toggleTheme}
-        className="absolute top-5 right-5 p-2 rounded-xl text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors"
+        className="absolute top-5 right-5 z-20 p-2.5 rounded-2xl bg-cs-surface border border-cs-border text-cs-text-secondary hover:text-cs-text-primary shadow-xs transition-colors focus-ring cursor-pointer"
         title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
         aria-label="Toggle Theme"
       >
-        {theme === 'dark' ? <Sun size={18} className="text-amber-400" /> : <Moon size={18} className="text-slate-600" />}
+        {theme === 'dark' ? <Sun size={18} className="text-amber-400" /> : <Moon size={18} className="text-cs-text-secondary" />}
       </button>
 
-      <div className="max-w-md w-full bg-white dark:bg-slate-900 p-8 sm:p-10 rounded-3xl shadow-xl dark:shadow-slate-950/60 border border-slate-200/80 dark:border-slate-800 transition-colors">
-        {/* Brand Header */}
-        <div className="text-center">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-violet-600 text-white flex items-center justify-center mx-auto mb-4 shadow-lg shadow-indigo-500/25">
-            <MessageSquare size={26} />
+      {/* Left Form Column */}
+      <div className="flex-1 flex items-center justify-center p-6 sm:p-12 lg:p-16">
+        <div className="w-full max-w-md bg-cs-surface p-8 sm:p-10 rounded-3xl border border-cs-border shadow-xl">
+          {/* Logo & Header */}
+          <div className="mb-6">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-violet-600 text-white flex items-center justify-center shadow-lg shadow-indigo-500/25 mb-4">
+              <MessageSquare size={24} />
+            </div>
+            <h2 className="text-2xl font-bold font-heading text-cs-text-primary tracking-tight">
+              Welcome back
+            </h2>
+            <p className="mt-1 text-xs text-cs-text-muted">
+              Enter your credentials to access your ChatSphere account
+            </p>
           </div>
-          <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
-            Welcome to ChatSphere
-          </h2>
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            Sign in to start messaging in real-time
-          </p>
+
+          {error && (
+            <div className="mb-5 bg-cs-danger/10 border border-cs-danger/30 p-3 rounded-2xl text-xs text-cs-danger font-medium animate-in fade-in">
+              {error}
+            </div>
+          )}
+
+          <form className="space-y-4" onSubmit={handleSubmit}>
+            <div>
+              <label className="block text-xs font-semibold text-cs-text-primary mb-1.5">
+                Email or Username
+              </label>
+              <div className="relative">
+                <User size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-cs-text-muted" />
+                <input
+                  type="text"
+                  required
+                  className="w-full pl-10 pr-3.5 py-2.5 bg-cs-surface-raised border border-cs-border rounded-xl text-xs text-cs-text-primary placeholder:text-cs-text-muted focus:border-cs-accent focus:bg-cs-surface focus:ring-2 focus:ring-cs-accent/20 focus-ring transition-all"
+                  placeholder="Enter username or email"
+                  value={identifier}
+                  onChange={(e) => setIdentifier(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-cs-text-primary mb-1.5">
+                Password
+              </label>
+              <div className="relative">
+                <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-cs-text-muted" />
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  className="w-full pl-10 pr-10 py-2.5 bg-cs-surface-raised border border-cs-border rounded-xl text-xs text-cs-text-primary placeholder:text-cs-text-muted focus:border-cs-accent focus:bg-cs-surface focus:ring-2 focus:ring-cs-accent/20 focus-ring transition-all"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-cs-text-muted hover:text-cs-text-primary focus-ring p-0.5"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                </button>
+              </div>
+            </div>
+
+            <div className="pt-2">
+              <Button
+                type="submit"
+                variant="primary"
+                size="lg"
+                isLoading={isLoading}
+                className="w-full justify-center"
+              >
+                Sign In
+              </Button>
+            </div>
+          </form>
+
+          <div className="mt-6 pt-5 border-t border-cs-border text-center text-xs text-cs-text-muted">
+            Don't have an account?{' '}
+            <Link to="/register" className="font-bold text-cs-accent hover:underline">
+              Create an account
+            </Link>
+          </div>
+        </div>
+      </div>
+
+      {/* Right Hero / Branding Column (Desktop only) */}
+      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-indigo-950 via-slate-900 to-indigo-900 p-12 flex-col justify-between relative overflow-hidden text-white border-l border-cs-border/40 select-none">
+        {/* Subtle decorative glow */}
+        <div className="absolute top-1/4 -right-20 w-96 h-96 bg-indigo-500/15 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute bottom-10 left-10 w-80 h-80 bg-violet-500/15 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="relative z-10 flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-indigo-600/60 border border-indigo-400/30 flex items-center justify-center">
+            <MessageSquare size={20} className="text-white" />
+          </div>
+          <span className="text-lg font-bold font-heading tracking-tight">ChatSphere</span>
         </div>
 
-        {error && (
-          <div className="mt-5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 p-3 rounded-xl">
-            <p className="text-xs text-rose-700 dark:text-rose-400 font-medium">{error}</p>
+        <div className="relative z-10 max-w-md my-auto">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/20 border border-indigo-400/30 text-indigo-300 text-xs font-semibold mb-6">
+            <Sparkles size={14} />
+            <span>Distributed Real-Time Messaging</span>
           </div>
-        )}
 
-        <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              Email or Username
-            </label>
-            <div className="relative">
-              <User size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                required
-                className="w-full pl-10 pr-3 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                placeholder="Enter email or username"
-                value={identifier}
-                onChange={(e) => setIdentifier(e.target.value)}
-              />
+          <h1 className="text-3xl font-extrabold font-heading leading-tight mb-4">
+            Connect without delay across distributed nodes.
+          </h1>
+
+          <p className="text-sm text-indigo-200/80 leading-relaxed mb-8">
+            Experience ultra-low latency real-time communication with fault-tolerant WebSocket synchronization and persistent message storage.
+          </p>
+
+          <div className="space-y-3.5 text-xs text-indigo-100">
+            <div className="flex items-center gap-3">
+              <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
+              <span>Real-time delivery with instant read status synchronization</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
+              <span>Multi-user group collaboration rooms with admin permissions</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
+              <span>Automatic reconnect and offline message synchronization</span>
             </div>
           </div>
+        </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              Password
-            </label>
-            <div className="relative">
-              <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                type="password"
-                required
-                className="w-full pl-10 pr-3 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="pt-2">
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 dark:disabled:bg-slate-800 disabled:cursor-not-allowed text-white text-xs font-bold rounded-xl shadow-xs transition-colors flex items-center justify-center gap-2"
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 size={15} className="animate-spin" />
-                  <span>Signing in...</span>
-                </>
-              ) : (
-                'Sign In'
-              )}
-            </button>
-          </div>
-        </form>
-
-        <div className="mt-6 pt-5 border-t border-slate-100 dark:border-slate-800 text-center text-xs text-slate-500 dark:text-slate-400">
-          Don't have an account?{' '}
-          <Link to="/register" className="font-bold text-blue-600 dark:text-blue-400 hover:underline">
-            Create an account
-          </Link>
+        <div className="relative z-10 text-[11px] text-indigo-300/60 flex items-center justify-between">
+          <span>ChatSphere Distributed System</span>
+          <span>College Mini Project</span>
         </div>
       </div>
     </div>

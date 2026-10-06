@@ -1,13 +1,24 @@
-import React, { useState, useEffect, useRef, useContext } from 'react';
+import React, { useState, useEffect, useRef, useContext, useMemo } from 'react';
 import api from '../services/api';
 import { AuthContext } from '../context/AuthContext';
 import { SocketContext } from '../context/SocketContext';
+import Avatar from './ui/Avatar';
+import Badge from './ui/Badge';
+import Button from './ui/Button';
+import Modal from './ui/Modal';
+import EmptyState from './ui/EmptyState';
 import { 
   ArrowLeft, Send, Users, Info, UserPlus, LogOut, 
-  Check, CheckCheck, Clock, AlertCircle, RefreshCw, X, MessageSquare, Search, Sparkles
+  Check, CheckCheck, Clock, AlertCircle, RefreshCw, X, 
+  MessageSquare, Search, ChevronDown, Shield, Mail, Sparkles, WifiOff, Loader2
 } from 'lucide-react';
 
-const ChatArea = ({ conversation, onBack, connectionStatus }) => {
+export const ChatArea = ({ 
+  conversation, 
+  onBack, 
+  connectionStatus,
+  onConversationUpdated 
+}) => {
   const { user } = useContext(AuthContext);
   const { socket } = useContext(SocketContext);
 
@@ -16,6 +27,7 @@ const ChatArea = ({ conversation, onBack, connectionStatus }) => {
   const [isTyping, setIsTyping] = useState(false);
   const [typingUsers, setTypingUsers] = useState({}); // { senderId: senderName }
   const [showInfo, setShowInfo] = useState(false);
+  const [showScrollBottom, setShowScrollBottom] = useState(false);
 
   // Pagination states
   const [page, setPage] = useState(1);
@@ -35,12 +47,16 @@ const ChatArea = ({ conversation, onBack, connectionStatus }) => {
     isOpen: false,
     title: '',
     message: '',
+    confirmText: 'Confirm',
+    isDanger: false,
     onConfirm: null
   });
 
   const pendingTimeoutsRef = useRef({});
   const messagesEndRef = useRef(null);
+  const scrollContainerRef = useRef(null);
   const typingTimeoutRef = useRef(null);
+  const textareaRef = useRef(null);
 
   const isGroup = conversation?.type === 'group';
   const otherUser = isGroup ? null : conversation?.participants?.find(p => p._id !== user._id);
@@ -49,7 +65,7 @@ const ChatArea = ({ conversation, onBack, connectionStatus }) => {
     setToastMessage(msg);
     setTimeout(() => {
       setToastMessage('');
-    }, 3500);
+    }, 3200);
   };
 
   // 1. Initial message load
@@ -58,7 +74,6 @@ const ChatArea = ({ conversation, onBack, connectionStatus }) => {
       setMessages([]);
       setPage(1);
       setHasMore(false);
-      setShowInfo(false);
       setTypingUsers({});
       fetchInitialMessages();
     }
@@ -76,7 +91,8 @@ const ChatArea = ({ conversation, onBack, connectionStatus }) => {
     if (!socket || !conversation) return;
 
     const handleReceiveMessage = (msg) => {
-      if (msg.conversationId === conversation._id || msg.conversationId?._id === conversation._id) {
+      const convId = msg.conversationId?._id || msg.conversationId;
+      if (convId === conversation._id) {
         setMessages(prev => {
           if (prev.some(m => m._id === msg._id || (msg.clientMessageId && m.clientMessageId === msg.clientMessageId))) {
             return prev;
@@ -125,7 +141,7 @@ const ChatArea = ({ conversation, onBack, connectionStatus }) => {
     const handleTypingStart = (data) => {
       if (data.conversationId === conversation._id) {
         if (data.isGroup) {
-          setTypingUsers(prev => ({ ...prev, [data.senderId]: data.senderName }));
+          setTypingUsers(prev => ({ ...prev, [data.senderId]: data.senderName || 'Member' }));
         } else if (data.senderId === otherUser?._id) {
           setTypingUsers({ [data.senderId]: 'Typing...' });
         }
@@ -155,11 +171,21 @@ const ChatArea = ({ conversation, onBack, connectionStatus }) => {
       socket.off('typing_start', handleTypingStart);
       socket.off('typing_stop', handleTypingStop);
     };
-  }, [socket, conversation, otherUser]);
+  }, [socket, conversation?._id, otherUser?._id]);
 
+  // Scroll to bottom on initial message load or incoming message (if near bottom)
   useEffect(() => {
-    scrollToBottom();
+    if (!showScrollBottom) {
+      scrollToBottom();
+    }
   }, [messages.length, Object.keys(typingUsers).length]);
+
+  const handleScroll = () => {
+    if (!scrollContainerRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
+    const isUp = scrollHeight - scrollTop - clientHeight > 180;
+    setShowScrollBottom(isUp);
+  };
 
   const fetchInitialMessages = async () => {
     try {
@@ -218,12 +244,19 @@ const ChatArea = ({ conversation, onBack, connectionStatus }) => {
     }
   };
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const scrollToBottom = (smooth = true) => {
+    messagesEndRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto' });
   };
 
   const handleTypingChange = (e) => {
     setNewMessage(e.target.value);
+
+    // Auto-grow textarea
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`;
+    }
+
     if (!socket || !conversation) return;
 
     if (!isTyping) {
@@ -243,7 +276,7 @@ const ChatArea = ({ conversation, onBack, connectionStatus }) => {
         conversationId: conversation._id,
         isGroup
       });
-    }, 1200);
+    }, 1400);
   };
 
   const handleSendMessage = (e) => {
@@ -252,6 +285,9 @@ const ChatArea = ({ conversation, onBack, connectionStatus }) => {
 
     const text = newMessage.trim();
     setNewMessage('');
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
 
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     if (isTyping) {
@@ -344,6 +380,7 @@ const ChatArea = ({ conversation, onBack, connectionStatus }) => {
     }
   };
 
+  // Group member management
   const handleSearchUsersToAdd = async (q) => {
     setAddMemberQuery(q);
     if (!q.trim()) {
@@ -365,12 +402,12 @@ const ChatArea = ({ conversation, onBack, connectionStatus }) => {
 
   const handleAddMember = async (targetUser) => {
     try {
-      await api.put(`/conversations/${conversation._id}/group/add`, { userId: targetUser._id });
+      const res = await api.put(`/conversations/${conversation._id}/group/add`, { userId: targetUser._id });
       setIsAddMemberModalOpen(false);
       setAddMemberQuery('');
       setAddMemberResults([]);
       showToast(`Added ${targetUser.fullName} to group.`);
-      window.location.reload();
+      if (onConversationUpdated) onConversationUpdated(res.data?.data || res.data);
     } catch (err) {
       showToast(err.response?.data?.message || 'Error adding member');
     }
@@ -379,14 +416,16 @@ const ChatArea = ({ conversation, onBack, connectionStatus }) => {
   const handlePromptRemoveMember = (member) => {
     setConfirmModal({
       isOpen: true,
-      title: 'Remove Member',
+      title: 'Remove Group Member',
       message: `Are you sure you want to remove ${member.fullName} from this group?`,
+      confirmText: 'Remove Member',
+      isDanger: true,
       onConfirm: async () => {
         try {
-          await api.put(`/conversations/${conversation._id}/group/remove`, { userId: member._id });
+          const res = await api.put(`/conversations/${conversation._id}/group/remove`, { userId: member._id });
           setConfirmModal({ isOpen: false, title: '', message: '', onConfirm: null });
           showToast(`Removed ${member.fullName} from group.`);
-          window.location.reload();
+          if (onConversationUpdated) onConversationUpdated(res.data?.data || res.data);
         } catch (err) {
           showToast(err.response?.data?.message || 'Error removing member');
         }
@@ -397,13 +436,16 @@ const ChatArea = ({ conversation, onBack, connectionStatus }) => {
   const handlePromptLeaveGroup = () => {
     setConfirmModal({
       isOpen: true,
-      title: 'Leave Group',
-      message: `Are you sure you want to leave ${conversation.name}?`,
+      title: 'Leave Group Room',
+      message: `Are you sure you want to leave ${conversation.name}? You will no longer receive group messages.`,
+      confirmText: 'Leave Group',
+      isDanger: true,
       onConfirm: async () => {
         try {
           await api.put(`/conversations/${conversation._id}/group/leave`);
           socket?.emit('leave_group', { conversationId: conversation._id });
-          window.location.reload();
+          setConfirmModal({ isOpen: false, title: '', message: '', onConfirm: null });
+          if (onBack) onBack();
         } catch (err) {
           showToast(err.response?.data?.message || 'Error leaving group');
         }
@@ -416,12 +458,11 @@ const ChatArea = ({ conversation, onBack, connectionStatus }) => {
 
     if (msg.status === 'failed') {
       return (
-        <span className="flex items-center gap-1 text-rose-300 font-medium">
+        <span className="flex items-center gap-1 text-red-300 font-medium ml-1">
           <AlertCircle size={11} />
-          <span>Failed</span>
           <button 
             onClick={() => handleRetryMessage(msg)}
-            className="underline hover:text-white flex items-center gap-0.5 ml-1"
+            className="underline hover:text-white flex items-center gap-0.5 cursor-pointer"
           >
             <RefreshCw size={10} /> Retry
           </button>
@@ -430,25 +471,24 @@ const ChatArea = ({ conversation, onBack, connectionStatus }) => {
     }
 
     if (msg.status === 'sending') {
-      return <Clock size={11} className="text-blue-200 animate-spin" />;
+      return <Clock size={11} className="text-white/60 animate-spin ml-1" />;
     }
 
     if (isGroup) {
-      return <Check size={12} className="text-blue-200" title="Delivered to group" />;
+      return <Check size={12} className="text-white/75 ml-1" title="Delivered to group" />;
     }
 
     if (msg.status === 'read') {
-      return <CheckCheck size={13} className="text-sky-300 font-bold" title="Read" />;
+      return <CheckCheck size={13} className="text-[#9BE7FF] font-bold ml-1" title="Read" />;
     }
 
     if (msg.status === 'delivered') {
-      return <CheckCheck size={13} className="text-blue-200" title="Delivered" />;
+      return <CheckCheck size={13} className="text-white/70 ml-1" title="Delivered" />;
     }
 
-    return <Check size={12} className="text-blue-200" title="Sent to server" />;
+    return <Check size={12} className="text-white/70 ml-1" title="Sent to server" />;
   };
 
-  // Format date separator label
   const getDateLabel = (dateStr) => {
     const msgDate = new Date(dateStr);
     const today = new Date();
@@ -460,26 +500,21 @@ const ChatArea = ({ conversation, onBack, connectionStatus }) => {
     return msgDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
-  // Empty State View
+  // Empty State View when no active chat selected
   if (!conversation) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-950 p-6 text-center select-none transition-colors duration-200">
-        <div className="relative mb-6">
-          <div className="w-20 h-20 bg-gradient-to-tr from-blue-600 via-indigo-600 to-violet-600 text-white rounded-3xl flex items-center justify-center shadow-xl shadow-indigo-500/20">
-            <MessageSquare size={38} />
-          </div>
-          <div className="absolute -bottom-1 -right-1 w-7 h-7 bg-white dark:bg-slate-900 rounded-xl flex items-center justify-center shadow-xs border border-slate-200 dark:border-slate-800 text-amber-500">
-            <Sparkles size={16} />
-          </div>
+      <div className="flex-1 flex flex-col items-center justify-center bg-cs-bg p-8 text-center select-none">
+        <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-violet-600 text-white flex items-center justify-center shadow-lg shadow-indigo-500/25 mb-4">
+          <MessageSquare size={30} />
         </div>
-        <h3 className="text-xl font-bold text-slate-800 dark:text-white tracking-tight">
+        <h3 className="text-xl font-bold font-heading text-cs-text-primary tracking-tight">
           ChatSphere
         </h3>
-        <p className="text-sm font-medium text-slate-600 dark:text-slate-300 mt-1 max-w-sm">
-          Your conversations, all in one place.
+        <p className="text-xs font-semibold text-cs-accent mt-1">
+          Distributed Real-Time Messaging
         </p>
-        <p className="text-xs text-slate-400 dark:text-slate-400 mt-1 max-w-xs leading-relaxed">
-          Select a conversation from the sidebar to start chatting, or create a group to collaborate with friends.
+        <p className="text-xs text-cs-text-muted mt-2 max-w-xs leading-relaxed">
+          Select a chat from the left panel to begin, or search for colleagues and start a new conversation.
         </p>
       </div>
     );
@@ -495,80 +530,93 @@ const ChatArea = ({ conversation, onBack, connectionStatus }) => {
   const amIAdmin = isGroup && conversation.admins?.some(a => (a._id || a) === user._id);
 
   return (
-    <div className="flex-1 flex h-full bg-slate-50 dark:bg-slate-950 relative overflow-hidden transition-colors duration-200">
+    <div className="flex-1 flex h-full bg-cs-bg relative overflow-hidden">
       {/* Toast Notification Banner */}
       {toastMessage && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 bg-slate-900/90 dark:bg-slate-100 dark:text-slate-900 text-white px-4 py-2 rounded-xl text-xs font-semibold shadow-lg backdrop-blur-xs animate-in fade-in slide-in-from-top-2 duration-150">
+        <div className="absolute top-4 left-1/2 -translate-y-1/2 -translate-x-1/2 z-50 bg-cs-surface text-cs-text-primary border border-cs-border px-4 py-2 rounded-xl text-xs font-semibold shadow-lg backdrop-blur-xs animate-in fade-in slide-in-from-top-2 duration-150">
           {toastMessage}
         </div>
       )}
 
       {/* Main Chat Column */}
-      <div className="flex-1 flex flex-col h-full min-w-0">
+      <div className="flex-1 flex flex-col h-full min-w-0 bg-cs-bg">
         {/* Chat Header */}
-        <div className="px-4 py-3 border-b border-slate-200/80 dark:border-slate-800/80 flex justify-between items-center bg-white/95 dark:bg-slate-900/95 backdrop-blur-md shadow-xs z-10 shrink-0">
+        <header className="px-4 py-3 border-b border-cs-border flex justify-between items-center bg-cs-surface shadow-xs z-10 shrink-0">
           <div className="flex items-center gap-3 min-w-0">
             <button 
-              className="md:hidden text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100 p-1.5 -ml-1 rounded-xl"
+              className="md:hidden text-cs-text-secondary hover:text-cs-text-primary p-1.5 -ml-1 rounded-xl focus-ring cursor-pointer"
               onClick={onBack}
               aria-label="Back to conversations"
             >
               <ArrowLeft size={18} />
             </button>
 
-            <div className="relative shrink-0">
-              {isGroup ? (
-                <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shadow-xs">
-                  <Users size={18} />
-                </div>
-              ) : (
-                <div className="w-10 h-10 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center justify-center font-bold text-xs shadow-xs">
-                  {otherUser?.fullName?.charAt(0)?.toUpperCase() || '?'}
-                </div>
-              )}
-              {!isGroup && otherUser?.isOnline && (
-                <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 border-2 border-white dark:border-slate-900 rounded-full"></span>
-              )}
-            </div>
+            <Avatar
+              user={otherUser}
+              name={isGroup ? conversation.name : undefined}
+              isGroup={isGroup}
+              showPresence={!isGroup}
+              isOnline={otherUser?.isOnline}
+              size="md"
+            />
 
             <div className="min-w-0">
-              <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white truncate leading-snug">
+              <h3 className="text-xs sm:text-sm font-bold font-heading text-cs-text-primary truncate">
                 {isGroup ? conversation.name : otherUser?.fullName}
               </h3>
-              <p className="text-[11px] text-slate-400 dark:text-slate-400 truncate">
+              <p className="text-[11px] text-cs-text-muted truncate">
                 {isGroup 
                   ? `${conversation.participants?.length || 0} members • ${onlineCount} online`
-                  : (otherUser?.isOnline ? 'Online' : 'Offline')
+                  : (otherUser?.isOnline ? 'Active now' : 'Offline')
                 }
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-1.5">
-            {isGroup && (
-              <button 
-                onClick={() => setShowInfo(!showInfo)}
-                className={`p-2 rounded-xl text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors ${
-                  showInfo ? 'bg-slate-100 dark:bg-slate-800 text-blue-600 dark:text-blue-400' : ''
-                }`}
-                title="Group Room Information"
-                aria-label="View Group Information"
-              >
-                <Info size={17} />
-              </button>
+            <button 
+              onClick={() => setShowInfo(!showInfo)}
+              className={`p-2 rounded-xl text-cs-text-secondary hover:text-cs-text-primary hover:bg-cs-surface-raised transition-colors focus-ring cursor-pointer ${
+                showInfo ? 'bg-cs-accent-soft text-cs-accent' : ''
+              }`}
+              title="Chat Details & Info"
+              aria-label="View Details"
+            >
+              <Info size={18} />
+            </button>
+          </div>
+        </header>
+
+        {/* Connection status alert banner (if offline/reconnecting) */}
+        {connectionStatus !== 'connected' && (
+          <div className="px-4 py-1.5 bg-amber-500/10 border-b border-amber-500/20 text-amber-700 dark:text-amber-300 text-xs flex items-center justify-center gap-2">
+            {connectionStatus === 'reconnecting' ? (
+              <>
+                <Loader2 size={13} className="animate-spin text-amber-500" />
+                <span>Reconnecting to chat server... Messages will sync upon reconnection.</span>
+              </>
+            ) : (
+              <>
+                <WifiOff size={13} className="text-rose-500" />
+                <span>Connection offline. Retrying automatically...</span>
+              </>
             )}
           </div>
-        </div>
+        )}
 
         {/* Message Feed Area */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-3.5 bg-slate-50/60 dark:bg-slate-950">
+        <div 
+          ref={scrollContainerRef}
+          onScroll={handleScroll}
+          className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-2 bg-cs-bg relative"
+        >
           {/* Pagination Trigger */}
           {hasMore && (
-            <div className="text-center pt-1 pb-2">
+            <div className="text-center pt-1 pb-3">
               <button
                 onClick={handleLoadEarlier}
                 disabled={isLoadingMore}
-                className="px-3.5 py-1.5 bg-white dark:bg-slate-850 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 rounded-full text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 shadow-xs transition-colors"
+                className="px-4 py-1.5 bg-cs-surface border border-cs-border text-cs-text-secondary rounded-full text-xs font-semibold hover:bg-cs-surface-raised shadow-xs transition-colors cursor-pointer focus-ring"
               >
                 {isLoadingMore ? 'Loading earlier messages...' : 'Load earlier messages'}
               </button>
@@ -577,57 +625,87 @@ const ChatArea = ({ conversation, onBack, connectionStatus }) => {
 
           {/* Empty Conversation Notice */}
           {messages.length === 0 && (
-            <div className="p-8 text-center text-slate-400 text-xs">
-              No messages yet. Send a message to start chatting!
-            </div>
+            <EmptyState
+              icon={MessageSquare}
+              title="No messages in this chat"
+              description="Send the first message below to start the conversation."
+            />
           )}
 
-          {/* Messages Feed with grouping and date dividers */}
+          {/* Messages Feed with 5-minute runs & grouping */}
           {messages.map((msg, index) => {
             const isMine = (msg.senderId === user._id) || (msg.senderId?._id === user._id);
             const senderName = msg.senderId?.fullName || 'User';
 
-            // Check if previous message exists for date separator & grouping
             const prevMsg = messages[index - 1];
+            const nextMsg = messages[index + 1];
+
+            // Date separator check
             const showDateDivider = !prevMsg || getDateLabel(prevMsg.createdAt) !== getDateLabel(msg.createdAt);
-            const isConsecutive = prevMsg && 
-              ((prevMsg.senderId === msg.senderId) || (prevMsg.senderId?._id === msg.senderId?._id)) &&
-              !showDateDivider;
+
+            // Grouping: same sender within 5 minutes (300,000 ms)
+            const isSameSenderAsPrev = prevMsg &&
+              ((prevMsg.senderId === msg.senderId) || (prevMsg.senderId?._id === msg.senderId?._id));
+            const isWithin5MinPrev = isSameSenderAsPrev &&
+              (new Date(msg.createdAt) - new Date(prevMsg.createdAt) < 5 * 60 * 1000);
+            const isConsecutivePrev = isWithin5MinPrev && !showDateDivider;
+
+            const isSameSenderAsNext = nextMsg &&
+              ((nextMsg.senderId === msg.senderId) || (nextMsg.senderId?._id === msg.senderId?._id));
+            const isWithin5MinNext = isSameSenderAsNext &&
+              (new Date(nextMsg.createdAt) - new Date(msg.createdAt) < 5 * 60 * 1000);
+
+            // Radius variations for message runs
+            const isFirstInRun = !isConsecutivePrev;
+            const isLastInRun = !isWithin5MinNext;
+
+            let bubbleCornerClass = '';
+            if (isMine) {
+              if (isFirstInRun && isLastInRun) bubbleCornerClass = 'rounded-2xl rounded-br-xs';
+              else if (isFirstInRun) bubbleCornerClass = 'rounded-2xl rounded-br-md';
+              else if (isLastInRun) bubbleCornerClass = 'rounded-2xl rounded-tr-md rounded-br-xs';
+              else bubbleCornerClass = 'rounded-2xl rounded-r-md';
+            } else {
+              if (isFirstInRun && isLastInRun) bubbleCornerClass = 'rounded-2xl rounded-bl-xs';
+              else if (isFirstInRun) bubbleCornerClass = 'rounded-2xl rounded-bl-md';
+              else if (isLastInRun) bubbleCornerClass = 'rounded-2xl rounded-tl-md rounded-bl-xs';
+              else bubbleCornerClass = 'rounded-2xl rounded-l-md';
+            }
 
             return (
               <React.Fragment key={msg.clientMessageId || msg._id || index}>
                 {/* Date Divider */}
                 {showDateDivider && (
-                  <div className="flex items-center justify-center my-3">
-                    <span className="px-3 py-1 bg-white/80 dark:bg-slate-850/80 backdrop-blur-xs border border-slate-200/60 dark:border-slate-800 text-slate-500 dark:text-slate-400 text-[10px] font-bold rounded-full uppercase tracking-wider shadow-2xs">
+                  <div className="flex items-center justify-center my-4">
+                    <span className="px-3.5 py-1 bg-cs-surface border border-cs-border text-cs-text-muted text-[10px] font-bold rounded-full uppercase tracking-wider shadow-2xs">
                       {getDateLabel(msg.createdAt)}
                     </span>
                   </div>
                 )}
 
-                {/* Message Bubble Container */}
-                <div className={`flex flex-col ${isMine ? 'items-end' : 'items-start'} ${isConsecutive ? 'mt-1' : 'mt-2.5'}`}>
+                {/* Message Bubble Item */}
+                <div className={`flex flex-col ${isMine ? 'items-end' : 'items-start'} ${isConsecutivePrev ? 'mt-0.5' : 'mt-2.5'}`}>
+                  {/* Group message sender label */}
+                  {isGroup && !isMine && isFirstInRun && (
+                    <span className="text-[11px] font-bold text-cs-accent ml-2 mb-0.5">
+                      {senderName}
+                    </span>
+                  )}
+
                   <div 
-                    className={`max-w-[85%] sm:max-w-[70%] rounded-2xl px-3.5 py-2.5 transition-all shadow-xs ${
+                    className={`max-w-[85%] sm:max-w-[70%] px-3.5 py-2 transition-all shadow-xs ${bubbleCornerClass} ${
                       isMine 
-                        ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-br-xs' 
-                        : 'bg-white dark:bg-slate-850 text-slate-800 dark:text-slate-100 rounded-bl-xs border border-slate-200/80 dark:border-slate-800/80'
+                        ? 'bg-cs-accent text-white' 
+                        : 'bg-cs-surface text-cs-text-primary border border-cs-border'
                     }`}
                   >
-                    {/* Group message sender tag */}
-                    {isGroup && !isMine && !isConsecutive && (
-                      <p className="text-[11px] font-bold text-blue-600 dark:text-blue-400 mb-0.5">
-                        {senderName}
-                      </p>
-                    )}
-
-                    <p className="text-xs sm:text-sm whitespace-pre-wrap break-words leading-relaxed">
+                    <p className="text-xs sm:text-[13px] whitespace-pre-wrap break-words leading-relaxed select-text">
                       {msg.text}
                     </p>
 
-                    {/* Timestamp and status ticks */}
-                    <div className={`text-[10px] mt-1 flex justify-end items-center gap-1.5 ${
-                      isMine ? 'text-blue-100' : 'text-slate-400 dark:text-slate-400'
+                    {/* Timestamp & Status ticks */}
+                    <div className={`text-[10px] mt-1 flex justify-end items-center ${
+                      isMine ? 'text-white/80' : 'text-cs-text-muted'
                     }`}>
                       <span>
                         {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -643,13 +721,13 @@ const ChatArea = ({ conversation, onBack, connectionStatus }) => {
           {/* Typing Indicator Bubble */}
           {typingLabel && (
             <div className="flex items-center gap-2 mt-2">
-              <div className="bg-white dark:bg-slate-850 border border-slate-200 dark:border-slate-800 rounded-2xl rounded-bl-xs px-3.5 py-2 shadow-xs flex items-center gap-2">
+              <div className="bg-cs-surface border border-cs-border rounded-2xl rounded-bl-xs px-3.5 py-2 shadow-xs flex items-center gap-2">
                 <span className="flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 bg-blue-600 dark:bg-blue-400 rounded-full animate-bounce [animation-delay:-0.3s]"></span>
-                  <span className="w-1.5 h-1.5 bg-blue-600 dark:bg-blue-400 rounded-full animate-bounce [animation-delay:-0.15s]"></span>
-                  <span className="w-1.5 h-1.5 bg-blue-600 dark:bg-blue-400 rounded-full animate-bounce"></span>
+                  <span className="w-1.5 h-1.5 bg-cs-accent rounded-full animate-bounce [animation-delay:-0.3s]" />
+                  <span className="w-1.5 h-1.5 bg-cs-accent rounded-full animate-bounce [animation-delay:-0.15s]" />
+                  <span className="w-1.5 h-1.5 bg-cs-accent rounded-full animate-bounce" />
                 </span>
-                <span className="text-[11px] text-slate-500 dark:text-slate-400 font-semibold">{typingLabel}</span>
+                <span className="text-[11px] text-cs-text-secondary font-medium">{typingLabel}</span>
               </div>
             </div>
           )}
@@ -657,260 +735,323 @@ const ChatArea = ({ conversation, onBack, connectionStatus }) => {
           <div ref={messagesEndRef} />
         </div>
 
+        {/* Floating "Jump to latest" button */}
+        {showScrollBottom && (
+          <button
+            onClick={() => scrollToBottom(true)}
+            className="absolute bottom-20 right-6 z-20 p-2.5 rounded-full bg-cs-surface text-cs-text-secondary hover:text-cs-accent border border-cs-border shadow-lg transition-transform hover:scale-105 focus-ring cursor-pointer"
+            title="Jump to latest message"
+            aria-label="Scroll to bottom"
+          >
+            <ChevronDown size={18} />
+          </button>
+        )}
+
         {/* Message Composer Footer */}
-        <div className="p-3 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200/80 dark:border-slate-800/80">
-          <form className="flex items-center gap-2 max-w-5xl mx-auto" onSubmit={handleSendMessage}>
-            <div className="flex-1 relative flex items-center bg-slate-100 dark:bg-slate-800 hover:bg-slate-100/90 dark:hover:bg-slate-800/90 focus-within:bg-white dark:focus-within:bg-slate-850 border border-slate-200/80 dark:border-slate-750 focus-within:border-blue-500 rounded-2xl px-3.5 py-1.5 transition-all">
+        <footer className="p-3 bg-cs-surface border-t border-cs-border">
+          <form className="flex items-end gap-2 max-w-5xl mx-auto" onSubmit={handleSendMessage}>
+            <div className="flex-1 relative flex items-center bg-cs-surface-raised border border-cs-border focus-within:border-cs-accent focus-within:bg-cs-surface rounded-2xl px-3.5 py-2 transition-all">
               <textarea
-                className="w-full bg-transparent text-xs sm:text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none resize-none max-h-32 transition-all leading-normal"
+                ref={textareaRef}
+                className="w-full bg-transparent text-xs sm:text-sm text-cs-text-primary placeholder:text-cs-text-muted focus:outline-none resize-none max-h-32 transition-all leading-normal"
                 rows="1"
-                placeholder="Type a message..."
+                placeholder="Type a message... (Press Enter to send)"
                 value={newMessage}
                 onChange={handleTypingChange}
                 onKeyDown={handleKeyDown}
-                aria-label="Message input"
-              ></textarea>
+                aria-label="Message text"
+              />
             </div>
 
             <button 
               type="submit" 
               disabled={!newMessage.trim()}
-              className="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 dark:disabled:bg-slate-800 disabled:text-slate-400 dark:disabled:text-slate-600 disabled:cursor-not-allowed text-white rounded-2xl w-10 h-10 flex items-center justify-center transition-all shadow-xs shrink-0"
+              className="bg-cs-accent hover:bg-cs-accent-hover disabled:bg-cs-surface-raised disabled:text-cs-text-muted disabled:cursor-not-allowed text-white rounded-2xl w-10 h-10 flex items-center justify-center transition-all shadow-xs shrink-0 cursor-pointer focus-ring"
               title="Send message"
               aria-label="Send Message"
             >
               <Send size={16} />
             </button>
           </form>
-        </div>
+        </footer>
       </div>
 
-      {/* Group Info Drawer */}
-      {isGroup && showInfo && (
-        <div className="w-72 sm:w-80 border-l border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col h-full z-20 shadow-xl md:shadow-none animate-in slide-in-from-right duration-200">
+      {/* Right Column: Info Panel */}
+      {showInfo && (
+        <aside className="w-80 border-l border-cs-border bg-cs-surface flex flex-col h-full z-20 shadow-xl md:shadow-none animate-in slide-in-from-right duration-200">
           {/* Header */}
-          <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/70 dark:bg-slate-850/40">
-            <h4 className="font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-300">
-              Group Details
+          <div className="p-4 border-b border-cs-border flex justify-between items-center bg-cs-surface-raised/40">
+            <h4 className="font-bold text-xs uppercase tracking-wider text-cs-text-secondary font-heading">
+              {isGroup ? 'Group Information' : 'Contact Information'}
             </h4>
             <button 
               onClick={() => setShowInfo(false)}
-              className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 p-1 rounded-lg"
-              aria-label="Close group panel"
+              className="text-cs-text-muted hover:text-cs-text-primary p-1 rounded-lg focus-ring cursor-pointer"
+              aria-label="Close info panel"
             >
               <X size={16} />
             </button>
           </div>
 
-          {/* Group Header Info */}
-          <div className="p-5 border-b border-slate-100 dark:border-slate-800 text-center">
-            <div className="w-14 h-14 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/60 text-indigo-600 dark:text-indigo-400 mx-auto flex items-center justify-center mb-2.5 shadow-xs">
-              <Users size={28} />
-            </div>
+          {/* Profile details */}
+          <div className="flex-1 overflow-y-auto">
+            {isGroup ? (
+              <div>
+                {/* Group Banner & Identity */}
+                <div className="p-6 text-center border-b border-cs-border">
+                  <Avatar
+                    name={conversation.name}
+                    isGroup={true}
+                    size="xl"
+                    className="mx-auto mb-3"
+                  />
 
-            {amIAdmin ? (
-              <div className="space-y-1.5">
-                <input 
-                  type="text" 
-                  defaultValue={conversation.name} 
-                  onBlur={async (e) => {
-                    if (e.target.value !== conversation.name && e.target.value.trim()) {
-                      try {
-                        await api.put(`/conversations/${conversation._id}/group`, { name: e.target.value });
-                        showToast('Group name updated.');
-                      } catch(err) { showToast('Failed to update group name'); }
-                    }
-                  }}
-                  className="font-bold text-sm text-center w-full px-2 py-1 bg-transparent border border-transparent hover:border-slate-300 dark:hover:border-slate-700 focus:border-blue-500 rounded-lg text-slate-900 dark:text-white"
-                  title="Click to rename group"
-                />
-                <input 
-                  type="text" 
-                  placeholder="Group description"
-                  defaultValue={conversation.description} 
-                  onBlur={async (e) => {
-                    if (e.target.value !== conversation.description) {
-                      try {
-                        await api.put(`/conversations/${conversation._id}/group`, { description: e.target.value });
-                        showToast('Description updated.');
-                      } catch(err) { showToast('Failed to update description'); }
-                    }
-                  }}
-                  className="text-xs text-slate-500 dark:text-slate-400 text-center w-full px-2 py-1 bg-transparent border border-transparent hover:border-slate-300 dark:hover:border-slate-700 focus:border-blue-500 rounded-lg"
-                />
+                  {amIAdmin ? (
+                    <div className="space-y-2">
+                      <input 
+                        type="text" 
+                        defaultValue={conversation.name} 
+                        onBlur={async (e) => {
+                          if (e.target.value !== conversation.name && e.target.value.trim()) {
+                            try {
+                              const res = await api.put(`/conversations/${conversation._id}/group`, { name: e.target.value.trim() });
+                              showToast('Group name updated.');
+                              if (onConversationUpdated) onConversationUpdated(res.data?.data || res.data);
+                            } catch(err) { showToast('Failed to update group name'); }
+                          }
+                        }}
+                        className="font-bold text-sm text-center w-full px-2 py-1 bg-cs-surface-raised border border-cs-border focus:border-cs-accent rounded-xl text-cs-text-primary focus-ring"
+                        title="Click to rename group"
+                      />
+                      <input 
+                        type="text" 
+                        placeholder="Add a group description..."
+                        defaultValue={conversation.description} 
+                        onBlur={async (e) => {
+                          if (e.target.value !== conversation.description) {
+                            try {
+                              const res = await api.put(`/conversations/${conversation._id}/group`, { description: e.target.value.trim() });
+                              showToast('Description updated.');
+                              if (onConversationUpdated) onConversationUpdated(res.data?.data || res.data);
+                            } catch(err) { showToast('Failed to update description'); }
+                          }
+                        }}
+                        className="text-xs text-cs-text-secondary text-center w-full px-2 py-1 bg-cs-surface-raised border border-cs-border focus:border-cs-accent rounded-xl focus-ring"
+                      />
+                    </div>
+                  ) : (
+                    <div>
+                      <h3 className="font-bold text-sm text-cs-text-primary">{conversation.name}</h3>
+                      {conversation.description && (
+                        <p className="text-xs text-cs-text-muted mt-1">{conversation.description}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Members list */}
+                <div className="p-4">
+                  <div className="flex justify-between items-center mb-3">
+                    <h5 className="text-[11px] font-bold text-cs-text-muted uppercase tracking-wider">
+                      Members ({conversation.participants?.length || 0})
+                    </h5>
+                    {amIAdmin && (
+                      <button
+                        onClick={() => {
+                          setAddMemberQuery('');
+                          setAddMemberResults([]);
+                          setIsAddMemberModalOpen(true);
+                        }}
+                        className="text-xs font-semibold text-cs-accent hover:underline flex items-center gap-1 cursor-pointer"
+                      >
+                        <UserPlus size={13} />
+                        Add Member
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="space-y-1">
+                    {conversation.participants?.map(member => {
+                      const isAdmin = conversation.admins?.some(a => (a._id || a) === member._id);
+                      const isMe = member._id === user._id;
+
+                      return (
+                        <div key={member._id} className="flex items-center justify-between p-2 rounded-xl hover:bg-cs-surface-raised transition-colors group">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <Avatar
+                              user={member}
+                              size="sm"
+                              showPresence
+                              isOnline={member.isOnline}
+                            />
+                            <div className="min-w-0">
+                              <p className="text-xs font-semibold text-cs-text-primary truncate">
+                                {member.fullName} {isMe && '(You)'}
+                              </p>
+                              <p className="text-[10px] text-cs-text-muted truncate">@{member.username}</p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {isAdmin && (
+                              <Badge variant="accent-soft" size="xs">
+                                Admin
+                              </Badge>
+                            )}
+                            {amIAdmin && !isMe && (
+                              <button
+                                onClick={() => handlePromptRemoveMember(member)}
+                                className="text-[11px] text-cs-danger p-1 opacity-0 group-hover:opacity-100 transition-opacity hover:underline cursor-pointer"
+                                title="Remove member"
+                              >
+                                Remove
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Leave group button */}
+                <div className="p-4 border-t border-cs-border">
+                  <Button
+                    variant="danger"
+                    size="md"
+                    className="w-full"
+                    onClick={handlePromptLeaveGroup}
+                    icon={LogOut}
+                  >
+                    Leave Group Room
+                  </Button>
+                </div>
               </div>
             ) : (
-              <div>
-                <h3 className="font-bold text-sm text-slate-900 dark:text-white">{conversation.name}</h3>
-                {conversation.description && (
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{conversation.description}</p>
-                )}
+              /* Direct Chat Contact Details */
+              <div className="p-6 text-center space-y-4">
+                <Avatar
+                  user={otherUser}
+                  size="xl"
+                  showPresence
+                  isOnline={otherUser?.isOnline}
+                  className="mx-auto"
+                />
+                <div>
+                  <h3 className="font-bold text-base text-cs-text-primary">{otherUser?.fullName}</h3>
+                  <p className="text-xs text-cs-text-muted">@{otherUser?.username}</p>
+                </div>
+
+                <div className="text-left space-y-3 pt-2">
+                  <div className="p-3 bg-cs-surface-raised rounded-xl border border-cs-border">
+                    <div className="flex items-center gap-1.5 text-cs-text-muted mb-0.5 text-[11px] font-bold uppercase tracking-wider">
+                      <Mail size={13} />
+                      <span>Email</span>
+                    </div>
+                    <p className="text-xs font-medium text-cs-text-primary">{otherUser?.email}</p>
+                  </div>
+
+                  <div className="p-3 bg-cs-surface-raised rounded-xl border border-cs-border">
+                    <div className="flex items-center gap-1.5 text-cs-text-muted mb-0.5 text-[11px] font-bold uppercase tracking-wider">
+                      <Shield size={13} />
+                      <span>Status</span>
+                    </div>
+                    <p className="text-xs font-medium text-cs-text-primary">{otherUser?.status || 'Active on ChatSphere'}</p>
+                  </div>
+
+                  <div className="p-3 bg-cs-surface-raised rounded-xl border border-cs-border flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-cs-text-muted uppercase tracking-wider">Presence</span>
+                    <Badge variant={otherUser?.isOnline ? 'online' : 'neutral'} size="sm">
+                      {otherUser?.isOnline ? 'Active Online' : 'Offline'}
+                    </Badge>
+                  </div>
+                </div>
               </div>
             )}
           </div>
-
-          {/* Members List */}
-          <div className="flex-1 overflow-y-auto p-4">
-            <div className="flex justify-between items-center mb-2.5">
-              <h5 className="text-[11px] font-bold text-slate-400 dark:text-slate-400 uppercase tracking-wider">
-                Members ({conversation.participants?.length || 0})
-              </h5>
-            </div>
-
-            <div className="space-y-2">
-              {conversation.participants?.map(member => {
-                const isAdmin = conversation.admins?.some(a => (a._id || a) === member._id);
-                const isMe = member._id === user._id;
-
-                return (
-                  <div key={member._id} className="flex items-center justify-between group py-1">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className="relative shrink-0">
-                        <div className="w-7 h-7 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center justify-center font-bold text-xs">
-                          {member.fullName?.charAt(0)?.toUpperCase()}
-                        </div>
-                        {member.isOnline && (
-                          <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 bg-emerald-500 border border-white dark:border-slate-900 rounded-full"></span>
-                        )}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-xs font-semibold text-slate-800 dark:text-slate-100 truncate">
-                          {member.fullName} {isMe && '(You)'}
-                        </p>
-                        <p className="text-[10px] text-slate-400 truncate">@{member.username}</p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-1 shrink-0">
-                      {isAdmin && (
-                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
-                          Admin
-                        </span>
-                      )}
-
-                      {amIAdmin && !isMe && (
-                        <button
-                          onClick={() => handlePromptRemoveMember(member)}
-                          className="text-[10px] text-rose-600 hover:text-rose-800 dark:text-rose-400 p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                          title="Remove user from group"
-                        >
-                          Remove
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Admin Add Member Action */}
-            {amIAdmin && (
-              <button 
-                onClick={() => {
-                  setAddMemberQuery('');
-                  setAddMemberResults([]);
-                  setIsAddMemberModalOpen(true);
-                }}
-                className="w-full mt-4 py-2 border border-dashed border-slate-300 dark:border-slate-700 hover:border-blue-500 text-slate-600 dark:text-slate-300 hover:text-blue-600 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
-              >
-                <UserPlus size={14} /> Add Member
-              </button>
-            )}
-          </div>
-
-          {/* Leave Group Action */}
-          <div className="p-4 border-t border-slate-100 dark:border-slate-800">
-            <button 
-              onClick={handlePromptLeaveGroup}
-              className="w-full py-2 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-950/60 text-rose-600 dark:text-rose-400 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-colors border border-rose-200/60 dark:border-rose-900/40"
-            >
-              <LogOut size={14} /> Leave Group Room
-            </button>
-          </div>
-        </div>
+        </aside>
       )}
 
       {/* Add Member Modal */}
-      {isAddMemberModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-2xl shadow-2xl border border-slate-200/80 dark:border-slate-800 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="px-5 py-3.5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/70 dark:bg-slate-850/40">
-              <h4 className="font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-300">
-                Add Group Member
-              </h4>
-              <button 
-                onClick={() => setIsAddMemberModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-lg"
-              >
-                <X size={16} />
-              </button>
-            </div>
+      <Modal
+        isOpen={isAddMemberModalOpen}
+        onClose={() => setIsAddMemberModalOpen(false)}
+        title="Add Group Member"
+        description="Search for registered users to invite into this group room"
+      >
+        <div className="space-y-4">
+          <div className="relative">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-cs-text-muted" />
+            <input
+              type="text"
+              placeholder="Search by name, username or email..."
+              value={addMemberQuery}
+              onChange={(e) => handleSearchUsersToAdd(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 bg-cs-surface-raised border border-cs-border rounded-xl text-xs text-cs-text-primary placeholder:text-cs-text-muted focus:border-cs-accent focus:bg-cs-surface focus:ring-2 focus:ring-cs-accent/20 focus-ring"
+            />
+          </div>
 
-            <div className="p-4">
-              <div className="relative mb-3">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input 
-                  type="text" 
-                  placeholder="Search user by name or username..."
-                  value={addMemberQuery}
-                  onChange={(e) => handleSearchUsersToAdd(e.target.value)}
-                  className="w-full pl-8 pr-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                />
+          <div className="max-h-56 overflow-y-auto divide-y divide-cs-border border border-cs-border rounded-xl">
+            {isSearchingMembers ? (
+              <div className="p-6 text-center text-xs text-cs-text-muted">Searching...</div>
+            ) : addMemberResults.length === 0 ? (
+              <div className="p-6 text-center text-xs text-cs-text-muted">
+                {addMemberQuery ? 'No eligible users found' : 'Type to search for users'}
               </div>
-
-              <div className="max-h-48 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800">
-                {addMemberResults.length === 0 ? (
-                  <p className="p-4 text-center text-xs text-slate-400">
-                    {addMemberQuery ? (isSearchingMembers ? 'Searching...' : 'No available users found') : 'Type above to search'}
-                  </p>
-                ) : (
-                  addMemberResults.map(u => (
-                    <div 
-                      key={u._id}
-                      className="flex items-center justify-between p-2.5 hover:bg-slate-50 dark:hover:bg-slate-700/40 text-xs"
-                    >
-                      <div>
-                        <p className="font-semibold text-slate-800 dark:text-slate-100">{u.fullName}</p>
-                        <p className="text-[10px] text-slate-400">@{u.username}</p>
-                      </div>
-                      <button 
-                        onClick={() => handleAddMember(u)}
-                        className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-semibold transition-colors"
-                      >
-                        Add
-                      </button>
+            ) : (
+              addMemberResults.map(u => (
+                <div
+                  key={u._id}
+                  className="flex items-center justify-between p-3 hover:bg-cs-surface-raised transition-colors"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <Avatar user={u} size="sm" showPresence isOnline={u.isOnline} />
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-cs-text-primary truncate">{u.fullName}</p>
+                      <p className="text-[10px] text-cs-text-muted truncate">@{u.username}</p>
                     </div>
-                  ))
-                )}
-              </div>
-            </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    onClick={() => handleAddMember(u)}
+                  >
+                    Add
+                  </Button>
+                </div>
+              ))
+            )}
           </div>
         </div>
-      )}
+      </Modal>
 
       {/* Confirmation Modal */}
-      {confirmModal.isOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-2xl shadow-2xl border border-slate-200/80 dark:border-slate-800 overflow-hidden animate-in fade-in zoom-in-95 duration-150 p-5">
-            <h4 className="font-bold text-sm text-slate-900 dark:text-white mb-1">{confirmModal.title}</h4>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mb-5">{confirmModal.message}</p>
-            <div className="flex gap-2 justify-end">
-              <button
-                onClick={() => setConfirmModal({ isOpen: false, title: '', message: '', onConfirm: null })}
-                className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold rounded-xl transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmModal.onConfirm}
-                className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold rounded-xl transition-colors"
-              >
-                Confirm
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <Modal
+        isOpen={confirmModal.isOpen}
+        onClose={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+        title={confirmModal.title}
+        description={confirmModal.message}
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant={confirmModal.isDanger ? 'danger' : 'primary'}
+              onClick={confirmModal.onConfirm}
+            >
+              {confirmModal.confirmText || 'Confirm'}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-xs text-cs-text-secondary leading-relaxed">
+          {confirmModal.message}
+        </p>
+      </Modal>
     </div>
   );
 };
