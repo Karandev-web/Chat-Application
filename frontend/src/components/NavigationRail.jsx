@@ -21,38 +21,25 @@ export const NavigationRail = ({
       className="w-16 h-full bg-cs-surface border-r border-cs-border flex flex-col items-center justify-between py-4 select-none shrink-0 z-30"
       aria-label="Sidebar Navigation"
     >
-      {/* Top: ChatSphere Logo */}
-      <div className="flex flex-col items-center gap-4">
-        <div 
-          className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-violet-600 text-white flex items-center justify-center shadow-md shadow-indigo-500/25 relative group cursor-pointer"
+      {/* Top: ChatSphere Brand Logo & Home Trigger */}
+      <div className="flex flex-col items-center">
+        <button
+          onClick={() => onSelectTab && onSelectTab('chats')}
+          className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-violet-600 text-white flex items-center justify-center shadow-md shadow-indigo-500/25 relative group cursor-pointer focus-ring transition-transform hover:scale-105 active:scale-95"
           title="ChatSphere"
+          aria-label="ChatSphere"
         >
           <MessageSquare size={20} className="relative z-10" />
-          <span className="absolute -bottom-1 -right-1 w-3 h-3 bg-cs-surface rounded-full flex items-center justify-center">
-            <span className="w-1.5 h-1.5 rounded-full bg-cs-accent animate-pulse" />
-          </span>
-        </div>
-
-        {/* Navigation Item: Chats */}
-        <div className="mt-2 flex flex-col items-center gap-2">
-          <button
-            onClick={() => onSelectTab && onSelectTab('chats')}
-            className={`relative p-2.5 rounded-2xl transition-all cursor-pointer focus-ring ${
-              activeTab === 'chats'
-                ? 'bg-cs-accent text-white shadow-sm shadow-cs-accent/25'
-                : 'text-cs-text-secondary hover:text-cs-text-primary hover:bg-cs-surface-raised'
-            }`}
-            title="All Chats"
-            aria-label="Chats"
-          >
-            <MessageSquare size={20} />
-            {totalUnreadCount > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-cs-danger text-white text-[9px] font-bold flex items-center justify-center border-2 border-cs-surface">
-                {totalUnreadCount > 99 ? '99+' : totalUnreadCount}
-              </span>
-            )}
-          </button>
-        </div>
+          {totalUnreadCount > 0 ? (
+            <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-cs-danger text-white text-[9px] font-bold flex items-center justify-center border-2 border-cs-surface">
+              {totalUnreadCount > 99 ? '99+' : totalUnreadCount}
+            </span>
+          ) : (
+            <span className="absolute -bottom-1 -right-1 w-3 h-3 bg-cs-surface rounded-full flex items-center justify-center">
+              <span className="w-1.5 h-1.5 rounded-full bg-cs-accent animate-pulse" />
+            </span>
+          )}
+        </button>
       </div>
 
       {/* Middle / Bottom utilities */}
