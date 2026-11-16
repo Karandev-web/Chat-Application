@@ -28,27 +28,60 @@ ChatSphere is a distributed real-time chat application built for a college mini-
 
 ---
 
-## How to Run the Application
+## How to Run in Visual Studio Code (VS Code)
 
-### 1. Prerequisites
-- Node.js (v18+)
-- MongoDB running locally (`mongodb://localhost:27017/distributed-chat`)
+### Step 1: Open the Project in VS Code
+1. Open Visual Studio Code.
+2. Go to **File** > **Open Folder...** (or press `Ctrl + K, Ctrl + O`).
+3. Select the `distributed-chat` directory:
+   ```
+   C:\Users\Karan Mishra\AgriTwin_extracted\distributed-chat
+   ```
 
-### 2. Backend Setup
+---
+
+### Step 2: Open VS Code Integrated Terminals
+You need two terminals running simultaneously (one for the backend and one for the frontend):
+
+1. Open the terminal panel in VS Code:
+   - Shortcut: **`Ctrl + \``** (backtick) or click **Terminal** > **New Terminal**.
+2. Split the terminal side-by-side:
+   - Click the **Split Terminal** icon (`Ctrl + Shift + 5` or `Ctrl + \`) on the terminal header.
+
+---
+
+### Step 3: Run the Backend Server
+In the **first terminal**:
 ```bash
 cd backend
 npm install
-node server.js
+npm run dev
 ```
-The backend server runs on `http://localhost:5000`.
+- **Backend URL**: `http://localhost:5000`
+- **Health Check**: `http://localhost:5000/api/health`
+- Automatically restarts on file changes via `nodemon`.
 
-### 3. Frontend Setup
+---
+
+### Step 4: Run the Frontend Application
+In the **second terminal**:
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
-The frontend Vite server runs on `http://localhost:5173`.
+- **Frontend URL**: `http://localhost:5173`
+- Powered by Vite with Hot Module Replacement (HMR).
+
+---
+
+### Step 5: Open in Your Browser
+Hold `Ctrl` and click the `http://localhost:5173` link in the terminal, or open your web browser and navigate to:
+```
+http://localhost:5173
+```
+- Create an account or sign in to start chatting!
+- Open a second browser window (or incognito window) with another account to test real-time 1-on-1 and group chat.
 
 ---
 
